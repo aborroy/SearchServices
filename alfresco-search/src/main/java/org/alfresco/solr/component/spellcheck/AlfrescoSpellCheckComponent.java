@@ -12,7 +12,6 @@ import org.apache.solr.common.util.SimpleOrderedMap;
 import org.apache.solr.handler.component.ResponseBuilder;
 import org.apache.solr.handler.component.SpellCheckComponent;
 import org.apache.solr.spelling.SpellingResult;
-import org.json.JSONException;
 
 /**
  * @author Jamal Kaabi-Mofrad
@@ -48,14 +47,8 @@ public class AlfrescoSpellCheckComponent extends SpellCheckComponent
         collator.setMaxCollationEvaluations(maxCollationEvaluations);
         collator.setSuggestionsMayOverlap(suggestionsMayOverlap);
         collator.setDocCollectionLimit(maxCollationCollectDocs);
-		
-		// astrachan - added try/catch to overcome compilation issues
-		List<AlfrescoSpellCheckCollation> collations = null;
 
-        try {
-            collations = collator.collate(spellingResult, q, rb);
-            } catch (JSONException e) {
-        }
+        List<AlfrescoSpellCheckCollation> collations = collator.collate(spellingResult, q, rb);
         // by sorting here we guarantee a non-distributed request returns all
         // results in the same order as a distributed request would,
         // even in cases when the internal rank is the same.

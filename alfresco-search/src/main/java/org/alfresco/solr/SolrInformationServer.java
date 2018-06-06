@@ -702,7 +702,6 @@ public class SolrInformationServer implements InformationServer
                     Entry<Long, Long> entry = entries.next();
                     long txnTime = entry.getValue();
                     if (purgeTime - txnTime > 1200000) {
-						log.debug("## Purge the clean content cache of records more then 20 minutes old.");
                         //Purge the clean content cache of records more then 20 minutes old.
                         entries.remove();
                     }
@@ -713,7 +712,7 @@ public class SolrInformationServer implements InformationServer
             long txnFloor = -1;
 
             // This query gets lowest txnID that has dirty content.
-            log.debug("##  Finding the transaction floor");
+            //System.out.println("############### finding the transaction floor ################");
 
             TermQuery termQuery1 = new TermQuery(new Term(FIELD_FTSSTATUS, FTSStatus.Dirty.toString()));
             TermQuery termQuery2 = new TermQuery(new Term(FIELD_FTSSTATUS, FTSStatus.New.toString()));
@@ -736,11 +735,10 @@ public class SolrInformationServer implements InformationServer
             DelegatingCollector delegatingCollector = new TxnCacheFilter(cleanContentCache); //Filter transactions that have already been processed.
             delegatingCollector.setLastDelegate(collector);
             searcher.search(orQuery, delegatingCollector);
-            log.debug("## Transaction floor query: " + orQuery.toString() + " = " + collector.getTotalHits());
+            //System.out.println("############### Transaction floor query ################:" + orQuery.toString() + " = " + collector.getTotalHits());
 
             if(collector.getTotalHits() == 0)
             {
-				log.debug("## (1) collector.getTotalHits was 0, returning docIds of size: " + docIds.size());
                 return docIds;
             }
 
@@ -751,7 +749,7 @@ public class SolrInformationServer implements InformationServer
             NumericDocValues longs = context.reader().getNumericDocValues(FIELD_INTXID);
             txnFloor = longs.get(scoreDocs[0].doc - context.docBase);
 
-            log.debug("## Transaction floor: " + txnFloor);
+            //System.out.println("################ Transaction floor:"+txnFloor);
 
             //Find the next N transactions
             collector = TopFieldCollector.create(new Sort(new SortField(FIELD_INTXID, SortField.Type.LONG)),
@@ -766,13 +764,11 @@ public class SolrInformationServer implements InformationServer
             TermQuery txnQuery = new TermQuery(new Term(FIELD_DOC_TYPE, DOC_TYPE_TX));
             searcher.search(txnQuery, delegatingCollector);
             TopDocs docs = collector.topDocs();
+            //System.out.println("############### Next N transactions ################:" + docs.totalHits);
 
-			log.debug("## Next N transactions: " + docs.totalHits);
-			
             if (collector.getTotalHits() == 0)
             {
-                log.debug("## No new transactions to consider");
-                log.debug("## (2) collector.getTotalHits was 0, returning docIds of size: " + docIds.size());
+                //No new transactions to consider
                 return docIds;
             }
 
@@ -782,7 +778,6 @@ public class SolrInformationServer implements InformationServer
 
             for (ScoreDoc scoreDoc : docs.scoreDocs)
             {
-				log.debug("## We are inside ScoreDoc");
                 index = ReaderUtil.subIndex(scoreDoc.doc, leaves);
                 context = leaves.get(index);
                 longs = context.reader().getNumericDocValues(FIELD_INTXID);
@@ -790,8 +785,6 @@ public class SolrInformationServer implements InformationServer
 
                 //Build up the query for the filter of transactions we need to pull the dirty content for.
                 TermQuery txnIDQuery = new TermQuery(new Term(FIELD_INTXID, fieldType.readableToIndexed(Long.toString(txnID))));
-				log.debug("## - txnID: " + Long.toString(txnID) + " | scoreDoc.doc: "  + scoreDoc.doc + " | context.docBase: " + context.docBase + " | txnIDQuery: " + txnIDQuery.toString());
-				
                 builder.add(new BooleanClause(txnIDQuery, BooleanClause.Occur.SHOULD));
             }
 
@@ -799,10 +792,6 @@ public class SolrInformationServer implements InformationServer
 
 
             //Get the docs with dirty content for the transactions gathered above.
-			
-			log.debug("## Query (txnFilterQuery): " + txnFilterQuery.toString());
-
-            log.debug("## Getting the docs with dirty content for the transactions gathered above.");
 
             TermQuery statusQuery1 = new TermQuery(new Term(FIELD_FTSSTATUS, FTSStatus.Dirty.toString()));
             TermQuery statusQuery2 = new TermQuery(new Term(FIELD_FTSSTATUS, FTSStatus.New.toString()));
@@ -824,9 +813,7 @@ public class SolrInformationServer implements InformationServer
             searcher.search(builder2.build(), docListCollector);
             IntArrayList docList = docListCollector.getDocs();
             int size = docList.size();
-            
-			log.debug("## Second query (statusQuery): " + statusQuery.toString());
-            log.debug("## Dirty Doc Count: " + size);
+            //System.out.println("############### Dirty Doc Count ################:" + size);
 
             Set<String> fields = new HashSet<String>();
 
@@ -840,7 +827,7 @@ public class SolrInformationServer implements InformationServer
                 longs = context.reader().getNumericDocValues(FIELD_INTXID);
 
                 long txnId = longs.get(doc-context.docBase);
-                log.debug("## Dirty Doc txn id: " + txnId);
+                //System.out.println("############### Dirty Doc txn id ################:" + txnId);
 
                 if(!cleanContentCache.containsKey(txnId))
                 {
@@ -848,11 +835,7 @@ public class SolrInformationServer implements InformationServer
                     IndexableField id = document.getField(FIELD_SOLR4_ID);
                     String idString = id.stringValue();
                     TenantAclIdDbId tenantAndDbId = AlfrescoSolrDataModel.decodeNodeDocumentId(idString);
-					log.debug("## Adding document to docIds " + tenantAndDbId.dbId + " | tenant: " + tenantAndDbId.tenant);
                     docIds.add(tenantAndDbId);
-                }
-				else {
-                    log.debug("## 'cleanContentCache' DOES already contain this txnId: " + txnId);
                 }
             }
 
@@ -861,10 +844,9 @@ public class SolrInformationServer implements InformationServer
             for(Long l : processedTxns)
             {
                 //Save the indexVersion so we know when we can clean out this entry
-				log.debug("## Save the indexVersion so we know when we can clean out this entry");
                 cleanContentCache.put(l, txnTime);
             }
-			log.debug("## Returning docIds of size: " + docIds.size());
+
             return docIds;
         }
         finally

@@ -72,7 +72,7 @@ public class AlfrescoSpellCheckCollator
     private int docCollectionLimit = 0;
 
     public List<AlfrescoSpellCheckCollation> collate(SpellingResult result, String originalQuery,
-                ResponseBuilder ultimateResponse) throws JSONException
+                ResponseBuilder ultimateResponse)
     {
         List<AlfrescoSpellCheckCollation> collations = new ArrayList<>();
 
