@@ -255,7 +255,11 @@ public class AlfrescoSearchHandler extends RequestHandlerBase implements
 				}
 			} else if(req.getParams().get(AbstractQParser.ALFRESCO_JSON) != null) {
 				//json is in the params.
+				// astrachan - added try/catch to overcome compilation issues
+				try {
 				req.getContext().put(AbstractQParser.ALFRESCO_JSON, new JSONObject(req.getParams().get(AbstractQParser.ALFRESCO_JSON)));
+				  } catch (JSONException e) {
+				}
 			}
 		}
 	}

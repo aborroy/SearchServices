@@ -104,7 +104,8 @@ public class CMISDataCreatorTest extends TestCase
             List<String> permissions = new ArrayList<String>(1);
             permissions.add(BasicPermissions.READ);
             List<Ace> addAces = new ArrayList<Ace>(1);
-            addAces.add(new AccessControlEntryImpl(principal, permissions));
+            // astrachan
+            // addAces.add(new AccessControlEntryImpl(principal, permissions));
             newFolder.addAcl(addAces, AclPropagation.PROPAGATE);
             
             Map<String, Object> updateProperties = new HashMap<String, Object>();
@@ -143,7 +144,8 @@ public class CMISDataCreatorTest extends TestCase
            List<String> permissions = new ArrayList<String>(1);
            permissions.add(BasicPermissions.ALL);
            List<Ace> addAces = new ArrayList<Ace>(1);
-           addAces.add(new AccessControlEntryImpl(principal, permissions));
+           // astrachan
+           // addAces.add(new AccessControlEntryImpl(principal, permissions));
            base.addAcl(addAces, AclPropagation.PROPAGATE);
         }
         

@@ -75,7 +75,7 @@ public class ContentTracker extends AbstractTracker implements Tracker
                     getWriteLock().acquire();
 
                     List<TenantAclIdDbId> docs = this.infoSrv.getDocsWithUncleanContent(start, ROWS);
-                    //System.out.println("####################### Unclean content: "+docs.size()+" ##############################:"+totalDocs);
+                    log.debug("## Unclean content: "+ docs.size() + " | totalDocs: " + totalDocs);
                     if (docs.size() == 0) {
                         break;
                     }

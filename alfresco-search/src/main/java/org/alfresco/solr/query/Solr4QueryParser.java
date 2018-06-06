@@ -139,6 +139,7 @@ import org.apache.solr.search.SolrIndexSearcher;
 import org.apache.solr.update.UpdateShardHandlerConfig;
 import org.jaxen.saxpath.SAXPathException;
 import org.jaxen.saxpath.base.XPathReader;
+import org.json.JSONException;
 import org.json.JSONObject;
 import org.springframework.extensions.surf.util.I18NUtil;
 
@@ -699,7 +700,11 @@ public class Solr4QueryParser extends QueryParser implements QueryConstants
                     //Was the fingerprint passed in
                     String fingerPrintKey = "fingerprint." + nodeId;
                     if(json.has(fingerPrintKey)) {
+						// astrachan - added try/catch to overcome compilation issues
+						try {
                         fingerPrint = (String) json.get("fingerprint." + nodeId);
+						 } catch (JSONException e) {
+                        }
                         if (fingerPrint != null) {
                             List l = new ArrayList();
                             String[] hashes = fingerPrint.split(" ");
@@ -752,7 +757,11 @@ public class Solr4QueryParser extends QueryParser implements QueryConstants
                     ModifiableSolrParams newParams = new ModifiableSolrParams();
                     newParams.add(solrParams);
                     solrParams = newParams;
+					// astrachan - wrapping in try/catch to overcome compilation errors
+					try {
                     json.put("fingerprint." + nodeId, join(values, " "));
+						} catch (JSONException e) {
+                    }
                     String jsonString = json.toString();
                     newParams.add(AbstractQParser.ALFRESCO_JSON, jsonString);
                     request.getContext().put(AbstractQParser.ALFRESCO_JSON, json);
