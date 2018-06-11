@@ -239,7 +239,10 @@ public class SolrInformationServer implements InformationServer
     
     private String baseUrl;
     Properties props;
-
+     
+    //MNT-19652
+    private boolean enableCleanContentCache = true;
+    
     private long cleanContentTxnFloor = -1; // All transactions below this floor have had the content completed.
     private long cleanCascadeTxnFloor = -1;
     private long cleanContentSearcherOpenTime = -1;
@@ -283,6 +286,9 @@ public class SolrInformationServer implements InformationServer
         dataModel = AlfrescoSolrDataModel.getInstance();
 
         contentStreamLimit = Integer.parseInt(p.getProperty("alfresco.contentStreamLimit", "10000000"));
+        
+        //MNT-19652
+        enableCleanContentCache = Boolean.parseBoolean(p.getProperty("enable.cleanContentCache", "true"));
         
         // build base URL - host and port have to come from configuration.
         props = AlfrescoSolrDataModel.getCommonConfig();
@@ -666,192 +672,221 @@ public class SolrInformationServer implements InformationServer
     public List<TenantAclIdDbId> getDocsWithUncleanContent(int start, int rows) throws IOException
     {
         RefCounted<SolrIndexSearcher> refCounted = null;
+        SolrQueryRequest request = null;
         try
         {
             List<TenantAclIdDbId> docIds = new ArrayList<>();
             refCounted = this.core.getSearcher();
             SolrIndexSearcher searcher = refCounted.get();
-
-
-            /*
-            *  Below is the code for purging the cleanContentCache.
-            *  The cleanContentCache is an in-memory LRU cache of the transactions that have already
-            *  had their content fetched. This is needed because the ContentTracker does not have an up-to-date
-            *  snapshot of the index to determine which nodes are marked as dirty/new. The cleanContentCache is used
-            *  to filter out nodes that belong to transactions that have already been processed, which stops them from
-            *  being re-processed.
-            *
-            *  The cleanContentCache needs to be purged periodically to support retrying of failed content fetches.
-            *  This is because fetches for individual nodes within the transaction may have failed, but the transaction will still be in the
-            *  cleanContentCache, which prevents it from being retried.
-            *
-            *  Once a transaction is purged from the cleanContentCache it will be retried automatically if it is marked dirty/new
-            *  in current snapshot of the index.
-            *
-            *  The code below runs every two minutes and purges transactions from the
-            *  cleanContentCache that is more then 20 minutes old.
-            *
-            */
-
-            long purgeTime = System.currentTimeMillis();
-            if(purgeTime - cleanContentLastPurged > 120000)
-            {
-                Iterator<Entry> entries = cleanContentCache.entrySet().iterator();
-                while (entries.hasNext())
+            
+            //MNT-19652
+            if (enableCleanContentCache) {            
+            	log.debug("#### enable.cleanContentCache --> true");
+	            /*
+	            *  Below is the code for purging the cleanContentCache.
+	            *  The cleanContentCache is an in-memory LRU cache of the transactions that have already
+	            *  had their content fetched. This is needed because the ContentTracker does not have an up-to-date
+	            *  snapshot of the index to determine which nodes are marked as dirty/new. The cleanContentCache is used
+	            *  to filter out nodes that belong to transactions that have already been processed, which stops them from
+	            *  being re-processed.
+	            *
+	            *  The cleanContentCache needs to be purged periodically to support retrying of failed content fetches.
+	            *  This is because fetches for individual nodes within the transaction may have failed, but the transaction will still be in the
+	            *  cleanContentCache, which prevents it from being retried.
+	            *
+	            *  Once a transaction is purged from the cleanContentCache it will be retried automatically if it is marked dirty/new
+	            *  in current snapshot of the index.
+	            *
+	            *  The code below runs every two minutes and purges transactions from the
+	            *  cleanContentCache that is more then 20 minutes old.
+	            *
+	            */
+	
+	            long purgeTime = System.currentTimeMillis();
+	            if(purgeTime - cleanContentLastPurged > 120000)
+	            {
+	                Iterator<Entry> entries = cleanContentCache.entrySet().iterator();
+	                while (entries.hasNext())
+	                {
+	                    Entry<Long, Long> entry = entries.next();
+	                    long txnTime = entry.getValue();
+	                    if (purgeTime - txnTime > 1200000) {
+	                        //Purge the clean content cache of records more then 20 minutes old.
+	                        entries.remove();
+	                    }
+	                }
+	                cleanContentLastPurged = purgeTime;
+	            }
+	
+	            long txnFloor = -1;
+	
+	            // This query gets lowest txnID that has dirty content.
+	            log.debug("############### finding the transaction floor ################");
+	
+	            TermQuery termQuery1 = new TermQuery(new Term(FIELD_FTSSTATUS, FTSStatus.Dirty.toString()));
+	            TermQuery termQuery2 = new TermQuery(new Term(FIELD_FTSSTATUS, FTSStatus.New.toString()));
+	            BooleanClause clause1 = new BooleanClause(termQuery1, BooleanClause.Occur.SHOULD);
+	            BooleanClause clause2 = new BooleanClause(termQuery2, BooleanClause.Occur.SHOULD);
+	            BooleanQuery.Builder builder = new BooleanQuery.Builder();
+	            builder.add(clause1);
+	            builder.add(clause2);
+	            BooleanQuery orQuery = builder.build();
+	
+	            Sort sort = new Sort(new SortField(FIELD_INTXID, SortField.Type.LONG));
+	            sort = sort.rewrite(searcher);
+	            TopFieldCollector collector = TopFieldCollector.create(sort,
+	                    1,
+	                    null,
+	                    false,
+	                    false,
+	                    false);
+	
+	            DelegatingCollector delegatingCollector = new TxnCacheFilter(cleanContentCache); //Filter transactions that have already been processed.
+	            delegatingCollector.setLastDelegate(collector);
+	            searcher.search(orQuery, delegatingCollector);
+	            log.debug("############### Transaction floor query ################:" + orQuery.toString() + " = " + collector.getTotalHits());
+	
+	            if(collector.getTotalHits() == 0)
+	            {
+	                return docIds;
+	            }
+	
+	            ScoreDoc[] scoreDocs = collector.topDocs().scoreDocs;
+	            List<LeafReaderContext> leaves = searcher.getTopReaderContext().leaves();
+	            int index = ReaderUtil.subIndex(scoreDocs[0].doc, leaves);
+	            LeafReaderContext context = leaves.get(index);
+	            NumericDocValues longs = context.reader().getNumericDocValues(FIELD_INTXID);
+	            txnFloor = longs.get(scoreDocs[0].doc - context.docBase);
+	
+	            log.debug("################ Transaction floor:"+txnFloor);
+	
+	            //Find the next N transactions
+	            collector = TopFieldCollector.create(new Sort(new SortField(FIELD_INTXID, SortField.Type.LONG)),
+	                                                                   rows,
+	                                                                   null,
+	                                                                   false,
+	                                                                   false,
+	                                                                   false);
+	
+	            delegatingCollector = new TxnFloorFilter(txnFloor, cleanContentCache);
+	            delegatingCollector.setLastDelegate(collector);
+	            TermQuery txnQuery = new TermQuery(new Term(FIELD_DOC_TYPE, DOC_TYPE_TX));
+	            searcher.search(txnQuery, delegatingCollector);
+	            TopDocs docs = collector.topDocs();
+	            log.debug("############### Next N transactions ################:" + docs.totalHits);
+	
+	            if (collector.getTotalHits() == 0)
+	            {
+	                //No new transactions to consider
+	                return docIds;
+	            }
+	
+	            leaves = searcher.getTopReaderContext().leaves();
+	            FieldType fieldType = searcher.getSchema().getField(FIELD_INTXID).getType();
+	            builder = new BooleanQuery.Builder();
+	
+	            for (ScoreDoc scoreDoc : docs.scoreDocs)
+	            {
+	                index = ReaderUtil.subIndex(scoreDoc.doc, leaves);
+	                context = leaves.get(index);
+	                longs = context.reader().getNumericDocValues(FIELD_INTXID);
+	                long txnID = longs.get(scoreDoc.doc - context.docBase);
+	
+	                //Build up the query for the filter of transactions we need to pull the dirty content for.
+	                TermQuery txnIDQuery = new TermQuery(new Term(FIELD_INTXID, fieldType.readableToIndexed(Long.toString(txnID))));
+	                builder.add(new BooleanClause(txnIDQuery, BooleanClause.Occur.SHOULD));
+	            }
+	
+	            BooleanQuery txnFilterQuery = builder.build();
+	
+	
+	            //Get the docs with dirty content for the transactions gathered above.
+	
+	            TermQuery statusQuery1 = new TermQuery(new Term(FIELD_FTSSTATUS, FTSStatus.Dirty.toString()));
+	            TermQuery statusQuery2 = new TermQuery(new Term(FIELD_FTSSTATUS, FTSStatus.New.toString()));
+	            BooleanClause statusClause1 = new BooleanClause(statusQuery1, BooleanClause.Occur.SHOULD);
+	            BooleanClause statusClause2 = new BooleanClause(statusQuery2, BooleanClause.Occur.SHOULD);
+	            BooleanQuery.Builder builder1 = new BooleanQuery.Builder();
+	            builder1.add(statusClause1);
+	            builder1.add(statusClause2);
+	            BooleanQuery statusQuery = builder1.build();
+	
+	            DocListCollector docListCollector = new DocListCollector();
+	
+	
+	            BooleanQuery.Builder builder2 = new BooleanQuery.Builder();
+	
+	            builder2.add(statusQuery, BooleanClause.Occur.MUST);
+	            builder2.add(new QueryWrapperFilter(txnFilterQuery), BooleanClause.Occur.MUST);
+	
+	            searcher.search(builder2.build(), docListCollector);
+	            IntArrayList docList = docListCollector.getDocs();
+	            int size = docList.size();
+	            log.debug("############### Dirty Doc Count ################:" + size);
+	
+	            Set<String> fields = new HashSet<String>();
+	
+	            fields.add(FIELD_SOLR4_ID);
+	            List<Long> processedTxns = new ArrayList<Long>();
+	            for (int i = 0; i < size; ++i) {
+	                int doc = docList.get(i);
+	                Document document = searcher.doc(doc, fields);
+	                index = ReaderUtil.subIndex(doc, leaves);
+	                context = leaves.get(index);
+	                longs = context.reader().getNumericDocValues(FIELD_INTXID);
+	
+	                long txnId = longs.get(doc-context.docBase);
+	                log.debug("############### Dirty Doc txn id ################:" + txnId);
+	
+	                if(!cleanContentCache.containsKey(txnId))
+	                {
+	                    processedTxns.add(txnId);
+	                    IndexableField id = document.getField(FIELD_SOLR4_ID);
+	                    String idString = id.stringValue();
+	                    TenantAclIdDbId tenantAndDbId = AlfrescoSolrDataModel.decodeNodeDocumentId(idString);
+	                    docIds.add(tenantAndDbId);
+	                }
+	            }
+	
+	            long txnTime = System.currentTimeMillis();
+	
+	            for(Long l : processedTxns)
+	            {
+	                //Save the indexVersion so we know when we can clean out this entry
+	                cleanContentCache.put(l, txnTime);
+	            }
+	
+	            return docIds;
+            }else {
+            	log.debug("#### enable.cleanContentCache --> false");
+            	request = getLocalSolrQueryRequest();
+                ModifiableSolrParams params = new ModifiableSolrParams(request.getParams());
+                String query = FIELD_FTSSTATUS + ":" + FTSStatus.Dirty + " OR " + FIELD_FTSSTATUS + ":" + FTSStatus.New;
+                params.set("q", query)
+                    .set("fl", FIELD_SOLR4_ID)
+                    .set("rows", rows)
+                    .set("start", start)
+                    .set("sort", "_docid_ asc");
+                    // no scoring !!
+                SolrDocumentList docList = cloud.getSolrDocumentList(nativeRequestHandler, request, params);
+                if (docList != null)
                 {
-                    Entry<Long, Long> entry = entries.next();
-                    long txnTime = entry.getValue();
-                    if (purgeTime - txnTime > 1200000) {
-                        //Purge the clean content cache of records more then 20 minutes old.
-                        entries.remove();
+                    for (SolrDocument doc : docList)
+                    {
+                        String id = getFieldValueString(doc, FIELD_SOLR4_ID);
+                        TenantAclIdDbId tenantAndDbId = AlfrescoSolrDataModel.decodeNodeDocumentId(id);
+                        docIds.add(tenantAndDbId);
                     }
                 }
-                cleanContentLastPurged = purgeTime;
-            }
 
-            long txnFloor = -1;
-
-            // This query gets lowest txnID that has dirty content.
-            log.debug("############### finding the transaction floor ################");
-
-            TermQuery termQuery1 = new TermQuery(new Term(FIELD_FTSSTATUS, FTSStatus.Dirty.toString()));
-            TermQuery termQuery2 = new TermQuery(new Term(FIELD_FTSSTATUS, FTSStatus.New.toString()));
-            BooleanClause clause1 = new BooleanClause(termQuery1, BooleanClause.Occur.SHOULD);
-            BooleanClause clause2 = new BooleanClause(termQuery2, BooleanClause.Occur.SHOULD);
-            BooleanQuery.Builder builder = new BooleanQuery.Builder();
-            builder.add(clause1);
-            builder.add(clause2);
-            BooleanQuery orQuery = builder.build();
-
-            Sort sort = new Sort(new SortField(FIELD_INTXID, SortField.Type.LONG));
-            sort = sort.rewrite(searcher);
-            TopFieldCollector collector = TopFieldCollector.create(sort,
-                    1,
-                    null,
-                    false,
-                    false,
-                    false);
-
-            DelegatingCollector delegatingCollector = new TxnCacheFilter(cleanContentCache); //Filter transactions that have already been processed.
-            delegatingCollector.setLastDelegate(collector);
-            searcher.search(orQuery, delegatingCollector);
-            log.debug("############### Transaction floor query ################:" + orQuery.toString() + " = " + collector.getTotalHits());
-
-            if(collector.getTotalHits() == 0)
-            {
                 return docIds;
+
             }
-
-            ScoreDoc[] scoreDocs = collector.topDocs().scoreDocs;
-            List<LeafReaderContext> leaves = searcher.getTopReaderContext().leaves();
-            int index = ReaderUtil.subIndex(scoreDocs[0].doc, leaves);
-            LeafReaderContext context = leaves.get(index);
-            NumericDocValues longs = context.reader().getNumericDocValues(FIELD_INTXID);
-            txnFloor = longs.get(scoreDocs[0].doc - context.docBase);
-
-            log.debug("################ Transaction floor:"+txnFloor);
-
-            //Find the next N transactions
-            collector = TopFieldCollector.create(new Sort(new SortField(FIELD_INTXID, SortField.Type.LONG)),
-                                                                   rows,
-                                                                   null,
-                                                                   false,
-                                                                   false,
-                                                                   false);
-
-            delegatingCollector = new TxnFloorFilter(txnFloor, cleanContentCache);
-            delegatingCollector.setLastDelegate(collector);
-            TermQuery txnQuery = new TermQuery(new Term(FIELD_DOC_TYPE, DOC_TYPE_TX));
-            searcher.search(txnQuery, delegatingCollector);
-            TopDocs docs = collector.topDocs();
-            log.debug("############### Next N transactions ################:" + docs.totalHits);
-
-            if (collector.getTotalHits() == 0)
-            {
-                //No new transactions to consider
-                return docIds;
-            }
-
-            leaves = searcher.getTopReaderContext().leaves();
-            FieldType fieldType = searcher.getSchema().getField(FIELD_INTXID).getType();
-            builder = new BooleanQuery.Builder();
-
-            for (ScoreDoc scoreDoc : docs.scoreDocs)
-            {
-                index = ReaderUtil.subIndex(scoreDoc.doc, leaves);
-                context = leaves.get(index);
-                longs = context.reader().getNumericDocValues(FIELD_INTXID);
-                long txnID = longs.get(scoreDoc.doc - context.docBase);
-
-                //Build up the query for the filter of transactions we need to pull the dirty content for.
-                TermQuery txnIDQuery = new TermQuery(new Term(FIELD_INTXID, fieldType.readableToIndexed(Long.toString(txnID))));
-                builder.add(new BooleanClause(txnIDQuery, BooleanClause.Occur.SHOULD));
-            }
-
-            BooleanQuery txnFilterQuery = builder.build();
-
-
-            //Get the docs with dirty content for the transactions gathered above.
-
-            TermQuery statusQuery1 = new TermQuery(new Term(FIELD_FTSSTATUS, FTSStatus.Dirty.toString()));
-            TermQuery statusQuery2 = new TermQuery(new Term(FIELD_FTSSTATUS, FTSStatus.New.toString()));
-            BooleanClause statusClause1 = new BooleanClause(statusQuery1, BooleanClause.Occur.SHOULD);
-            BooleanClause statusClause2 = new BooleanClause(statusQuery2, BooleanClause.Occur.SHOULD);
-            BooleanQuery.Builder builder1 = new BooleanQuery.Builder();
-            builder1.add(statusClause1);
-            builder1.add(statusClause2);
-            BooleanQuery statusQuery = builder1.build();
-
-            DocListCollector docListCollector = new DocListCollector();
-
-
-            BooleanQuery.Builder builder2 = new BooleanQuery.Builder();
-
-            builder2.add(statusQuery, BooleanClause.Occur.MUST);
-            builder2.add(new QueryWrapperFilter(txnFilterQuery), BooleanClause.Occur.MUST);
-
-            searcher.search(builder2.build(), docListCollector);
-            IntArrayList docList = docListCollector.getDocs();
-            int size = docList.size();
-            log.debug("############### Dirty Doc Count ################:" + size);
-
-            Set<String> fields = new HashSet<String>();
-
-            fields.add(FIELD_SOLR4_ID);
-            List<Long> processedTxns = new ArrayList<Long>();
-            for (int i = 0; i < size; ++i) {
-                int doc = docList.get(i);
-                Document document = searcher.doc(doc, fields);
-                index = ReaderUtil.subIndex(doc, leaves);
-                context = leaves.get(index);
-                longs = context.reader().getNumericDocValues(FIELD_INTXID);
-
-                long txnId = longs.get(doc-context.docBase);
-                log.debug("############### Dirty Doc txn id ################:" + txnId);
-
-                if(!cleanContentCache.containsKey(txnId))
-                {
-                    processedTxns.add(txnId);
-                    IndexableField id = document.getField(FIELD_SOLR4_ID);
-                    String idString = id.stringValue();
-                    TenantAclIdDbId tenantAndDbId = AlfrescoSolrDataModel.decodeNodeDocumentId(idString);
-                    docIds.add(tenantAndDbId);
-                }
-            }
-
-            long txnTime = System.currentTimeMillis();
-
-            for(Long l : processedTxns)
-            {
-                //Save the indexVersion so we know when we can clean out this entry
-                cleanContentCache.put(l, txnTime);
-            }
-
-            return docIds;
         }
         finally
         {
             refCounted.decref();
+            if(request != null){request.close();}
         }
     }
 
