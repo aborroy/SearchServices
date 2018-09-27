@@ -620,7 +620,7 @@ public class MetadataTracker extends AbstractTracker implements Tracker
         return transactions;
     }
 
-    protected void trackTransactions() throws AuthenticationException, IOException, JSONException, EncoderException
+    protected synchronized void trackTransactions() throws AuthenticationException, IOException, JSONException, EncoderException
     {
         long startElapsed = System.nanoTime();
         
@@ -647,8 +647,9 @@ public class MetadataTracker extends AbstractTracker implements Tracker
                 * tracker state could have been invalidated due to a rollback by the CommitTracker.
                 * In this case the state will revert to the last transaction state record in the index.
                 */
-
                 this.state = getTrackerState();
+                log.debug("#### Set state to MetadataTracker on:  " + this.coreName);
+                log.debug("# State of MetadataTracker: " + state.toString());
 
                 /*
                 *  The fromCommitTime tells getSomeTransactions() where to start, this actually fairly straight forward.

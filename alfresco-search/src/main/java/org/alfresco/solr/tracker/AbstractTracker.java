@@ -204,7 +204,8 @@ public abstract class AbstractTracker implements Tracker
             }
             else
             {
-                log.debug("## In AbstractTracker.track(), state is not null. continueState() called: " + this.state.getTrackerCycles() + " : "
+                log.debug("## In AbstractTracker.track(), state is not null. continueState() called: " 
+                        + this.state.getTrackerCycles() + " : "
                         + this.getClass().getName());
                 continueState();
                 this.state.setRunning(true);
@@ -267,13 +268,13 @@ public abstract class AbstractTracker implements Tracker
         this.rollback = rollback;
     }
 
-    private void continueState() 
+    private synchronized void continueState() 
     {
         log.debug("## Tracker cycles before continueState() is called: " + state.getTrackerCycles());
         infoSrv.continueState(state);
+        state.incrementTrackerCycles();
         log.debug("## Continue state and increment cycle: " + state.getTrackerCycles() + " : " 
                   + this.getClass().getName());
-        state.incrementTrackerCycles();
     }
 
     public synchronized void invalidateState()
