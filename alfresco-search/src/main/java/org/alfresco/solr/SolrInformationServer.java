@@ -1465,8 +1465,8 @@ public class SolrInformationServer implements InformationServer
                 }
             }
 
-            log.debug("##### STATE QUERY RESPONSE ######### "+ response.size() + " : " + 
-            state.getLastIndexedTxCommitTime() + " : " + this.getClass().toString());
+            log.debug("##### STATE QUERY RESPONSE response size: "+ response.size() + 
+                    " lastIndexedTxCommitTime: " + state.getLastIndexedTxCommitTime() );
 
             long startTime = System.currentTimeMillis();
             state.setLastStartTime(startTime);

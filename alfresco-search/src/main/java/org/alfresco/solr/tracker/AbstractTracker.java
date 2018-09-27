@@ -293,7 +293,7 @@ public abstract class AbstractTracker implements Tracker
         }
         else
         {
-            log.debug(String.format("## %s getTrackerInitialState %s",this.coreName, state.toString())); 
+            log.debug(String.format("## %s getTrackerInitialState",this.coreName)); 
             return this.infoSrv.getTrackerInitialState();
         }
     }
