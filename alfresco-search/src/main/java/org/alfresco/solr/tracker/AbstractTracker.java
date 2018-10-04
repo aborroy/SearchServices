@@ -270,7 +270,7 @@ public abstract class AbstractTracker implements Tracker
         this.rollback = rollback;
     }
 
-    private synchronized void continueState() 
+    private void continueState() 
     {
         log.debug("## Tracker cycles before continueState() is called: " + state.getTrackerCycles());
         infoSrv.continueState(state);

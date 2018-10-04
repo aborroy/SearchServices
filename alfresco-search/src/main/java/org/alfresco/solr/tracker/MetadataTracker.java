@@ -625,7 +625,7 @@ public class MetadataTracker extends AbstractTracker implements Tracker
         return transactions;
     }
 
-    protected synchronized void trackTransactions() throws AuthenticationException, IOException, JSONException, EncoderException
+    protected void trackTransactions() throws AuthenticationException, IOException, JSONException, EncoderException
     {
         long startElapsed = System.nanoTime();
         
