@@ -148,7 +148,7 @@ public class MetadataTracker extends AbstractTracker implements Tracker
         {
             // Dynamic registration
             /*
-            * This section allows Solr's master/slave setup to be used with dynamic shard registration.
+            * This section   allows Solr's master/slave setup to be used with dynamic shard registration.
             * In this scenario the slave is polling a "tracking" Solr node. The code below calls
             * the repo to register the state of the node without pulling any real transactions from the repo.
             *
@@ -679,6 +679,13 @@ public class MetadataTracker extends AbstractTracker implements Tracker
                 Long fromCommitTime = getTxFromCommitTime(txnsFound, state.getLastGoodTxCommitTimeInIndex());
                 log.debug("#### Check txnsFound : " + txnsFound.size());
                 log.debug("#### Get txn from commit time: " + fromCommitTime);
+                if(fromCommitTime + txnsFound.size() == 0)
+                {
+                    log.debug(String.format("No starting record of index found fromCommitTime:%d txnsFound: %d",
+                            fromCommitTime,
+                            txnsFound.size()));
+                    throw new Exception("Unable to find starting point to index");
+                }
                 transactions = getSomeTransactions(txnsFound, fromCommitTime, TIME_STEP_1_HR_IN_MS, 2000,
                                                    state.getTimeToStopIndexing());
                 
