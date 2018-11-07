@@ -606,6 +606,10 @@ public class MetadataTracker extends AbstractTracker implements Tracker
         // step forward in time until we find something or hit the time bound
         // max id unbounded
         Long startTime = fromCommitTime == null || fromCommitTime == 0 ? 1104537600000L : fromCommitTime;
+        log.debug(String.format("#### %s MetadataTracker getSomeTransactions start time: %d end: %d",
+                  this.coreName, 
+                  startTime,
+                  endTime));
         do
         {
             transactions = client.getTransactions(startTime, null, startTime + actualTimeStep, null, maxResults, shardstate);
@@ -614,7 +618,7 @@ public class MetadataTracker extends AbstractTracker implements Tracker
         } while (((transactions.getTransactions().size() == 0) && (startTime < endTime))
                     || ((transactions.getTransactions().size() > 0) && alreadyFoundTransactions(txnsFound, transactions)));
 
-
+        log.debug("### Finished getting transactions: " + transactions.toString());
         return transactions;
     }
 
