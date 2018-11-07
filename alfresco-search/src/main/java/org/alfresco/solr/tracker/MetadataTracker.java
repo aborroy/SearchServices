@@ -107,6 +107,7 @@ public class MetadataTracker extends AbstractTracker implements Tracker
         log.debug("### MetadataTracker doTrack ###");
         // MetadataTracker must wait until ModelTracker has run
         ModelTracker modelTracker = this.infoSrv.getAdminHandler().getTrackerRegistry().getModelTracker();
+
         if (modelTracker != null && modelTracker.hasModels())
         {
             trackRepository();
@@ -148,7 +149,7 @@ public class MetadataTracker extends AbstractTracker implements Tracker
         {
             // Dynamic registration
             /*
-            * This section   allows Solr's master/slave setup to be used with dynamic shard registration.
+            * This section allows Solr's master/slave setup to be used with dynamic shard registration.
             * In this scenario the slave is polling a "tracking" Solr node. The code below calls
             * the repo to register the state of the node without pulling any real transactions from the repo.
             *
@@ -156,7 +157,7 @@ public class MetadataTracker extends AbstractTracker implements Tracker
             * will pull its data from a "tracking" Solr node using Solr's master/slave replication, rather then tracking the repository.
             *
             */
-            log.debug("### Slave mode");
+            
             ShardState shardstate = getShardState();
             client.getTransactions(0L, null, 0L, null, 0, shardstate);
             return;
@@ -199,7 +200,6 @@ public class MetadataTracker extends AbstractTracker implements Tracker
     {
         TrackerState state = super.getTrackerState();
         log.debug("##shard state: " + state);
-        
         ShardState shardstate =  ShardStateBuilder.shardState()
                 .withMaster(isMaster)
                 .withLastUpdated(System.currentTimeMillis())
@@ -242,14 +242,12 @@ public class MetadataTracker extends AbstractTracker implements Tracker
             state.setCheckedLastTransactionTime(true);
             state.setCheckedFirstTransactionTime(true);
             log.info("No transactions found - no verification required");
-
             log.debug("=== Get first known transactions ===");
             firstTransactions = client.getTransactions(null, 0L, null, 2000L, 1);
             log.debug(String.format("#### %s max txid : %d ", this.coreName, firstTransactions.getMaxTxnId()));
             log.debug(String.format("#### %s the txns : %s",
                       this.coreName,
                       firstTransactions.getTransactions().toString()));
-            
             if (!firstTransactions.getTransactions().isEmpty())
             {
                 Transaction firstTransaction = firstTransactions.getTransactions().get(0);
@@ -607,12 +605,7 @@ public class MetadataTracker extends AbstractTracker implements Tracker
         Transactions transactions;
         // step forward in time until we find something or hit the time bound
         // max id unbounded
-        Long startTime = fromCommitTime == null ? Long.valueOf(0L) : fromCommitTime;
-        log.debug(String.format("#### %s MetadataTracker getSomeTransactions start time: %d end: %d",
-                this.coreName, 
-                startTime,
-                endTime));
-      
+        Long startTime = fromCommitTime == null || fromCommitTime == 0 ? 1104537600000L : fromCommitTime;
         do
         {
             transactions = client.getTransactions(startTime, null, startTime + actualTimeStep, null, maxResults, shardstate);
@@ -652,6 +645,7 @@ public class MetadataTracker extends AbstractTracker implements Tracker
                 * tracker state could have been invalidated due to a rollback by the CommitTracker.
                 * In this case the state will revert to the last transaction state record in the index.
                 */
+
                 this.state = getTrackerState();
                 log.debug("#### Set state to MetadataTracker on:  " + this.coreName);
                 log.debug("# State of MetadataTracker: " + state.toString());
@@ -679,16 +673,8 @@ public class MetadataTracker extends AbstractTracker implements Tracker
                 Long fromCommitTime = getTxFromCommitTime(txnsFound, state.getLastGoodTxCommitTimeInIndex());
                 log.debug("#### Check txnsFound : " + txnsFound.size());
                 log.debug("#### Get txn from commit time: " + fromCommitTime);
-                if(fromCommitTime + txnsFound.size() == 0)
-                {
-                    log.debug(String.format("No starting record of index found fromCommitTime:%d txnsFound: %d",
-                            fromCommitTime,
-                            txnsFound.size()));
-                    throw new Exception("Unable to find starting point to index");
-                }
                 transactions = getSomeTransactions(txnsFound, fromCommitTime, TIME_STEP_1_HR_IN_MS, 2000,
                                                    state.getTimeToStopIndexing());
-                
 
 
                 setLastTxCommitTimeAndTxIdInTrackerState(transactions, state);
@@ -872,6 +858,10 @@ public class MetadataTracker extends AbstractTracker implements Tracker
         for (Node node : nodes)
         {
             log.debug(String.format("#### Adding node id: %d txid: %d", node.getId(),node.getTxnId()));
+            if (log.isDebugEnabled())
+            {
+                log.debug(node.toString());
+            }
             nodeBatch.add(node);
             if (nodeBatch.size() > nodeBatchSize)
             {
@@ -917,7 +907,7 @@ public class MetadataTracker extends AbstractTracker implements Tracker
         @Override
         protected void onFail()
         {
-        	setRollback(true);
+            setRollback(true);
         }
         
         private List<Node> filterNodes(List<Node> nodes)
