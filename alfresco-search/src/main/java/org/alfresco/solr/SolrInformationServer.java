@@ -3613,6 +3613,7 @@ public class SolrInformationServer implements InformationServer
     @Override
     public void indexTransaction(Transaction info, boolean overwrite) throws IOException
     {
+        log.debug("Indexing single transaction : {}",info.getId());
         canUpdate();
         SolrQueryRequest request = null;
         UpdateRequestProcessor processor = null;
@@ -3647,7 +3648,7 @@ public class SolrInformationServer implements InformationServer
             cmd.solrDoc = input;
             //System.out.println("############### Adding transaction:"+ input);
             processor.processAdd(cmd);
-
+            log.debug("Update executed for single transaction : {}",info.getId());
             putTransactionState(processor, request, info);
         }
         finally
@@ -3886,22 +3887,20 @@ public class SolrInformationServer implements InformationServer
 
     public boolean txnInIndex(long txnId, boolean populateCache) throws IOException
     {
-        //System.out.println("##################### method txnInIndex ###################");
-
-        if(txnIdCache.containsKey(txnId))
+     if(txnIdCache.containsKey(txnId))
         {
-            //System.out.println("##################### txt in cache:"+txnId);
+            log.debug("Transaction in cache:{}",txnId);
             return true;
         }
         else
         {
-            //System.out.println("##################### txt not in cache:"+txnId);
-
+            log.debug("Searching Transaction in Solr:{}",txnId);
             RefCounted<SolrIndexSearcher> refCounted = null;
             try
             {
                 if(populateCache)
                 {
+                    log.debug("Transaction {} is added to the Cache",txnId);
                     txnIdCache.put(txnId, null); // Safe to add this here because we reset this on rollback.
                 }
                 refCounted = core.getSearcher();
@@ -3911,12 +3910,12 @@ public class SolrInformationServer implements InformationServer
                 TopDocs topDocs = searcher.search(q, 1);
                 if (topDocs.totalHits > 0)
                 {
-                    //System.out.println("##################### txt in index:"+txnId);
+                    log.debug("The Transaction is found in the Solr index:{}",txnId);
                     return true;
                 }
                 else
                 {
-                    //System.out.println("##################### txt not in index:"+txnId);
+                    log.debug("The Transaction is not found in the Solr index:{}",txnId);
                     return false;
                 }
             }
@@ -3972,6 +3971,7 @@ public class SolrInformationServer implements InformationServer
 
     public void clearProcessedTransactions()
     {
+        log.debug("Indexed Transaction Ids Cache is cleared");
         this.txnIdCache.clear();
     }
 

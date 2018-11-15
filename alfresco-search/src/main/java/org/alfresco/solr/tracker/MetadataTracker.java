@@ -729,12 +729,14 @@ public class MetadataTracker extends AbstractTracker implements Tracker
                         // correctly next time
                         if (info.getCommitTimeMs() > state.getTimeToStopIndexing()) {
                             upToDate = true;
+                            log.debug("## Stop scanning transactions, commit time: {} is greater than the stop indexing time {}", info.getCommitTimeMs(), state.getTimeToStopIndexing());
                             break;
                         }
 
                         txBatch.add(info);
-                        if (getUpdateAndDeleteCount(txBatch) > this.transactionDocsBatchSize) {
-
+                        long updateAndDeleteCount = getUpdateAndDeleteCount(txBatch);
+                        if (updateAndDeleteCount > this.transactionDocsBatchSize) {
+                            log.debug("## Batch Indexing of {} transactions started",txBatch.size());
                             docCount += indexBatchOfTransactions(txBatch);
                             totalUpdatedDocs += docCount;
 
@@ -747,6 +749,7 @@ public class MetadataTracker extends AbstractTracker implements Tracker
                     }
 
                     if (docCount > batchCount) {
+                        log.debug("## doc Count {} > batch Count {} - index transactions after Async starts",docCount,batchCount);
                         indexTransactionsAfterAsynchronous(txsIndexed, state);
                         long endElapsed = System.nanoTime();
                         trackerStats.addElapsedNodeTime(docCount, endElapsed - startElapsed);
@@ -762,9 +765,10 @@ public class MetadataTracker extends AbstractTracker implements Tracker
                 }
 
                 // Index any remaining transactions bringing the index to a consistent state so the CommitTracker can commit if need be.
-
+                log.debug("## Scanning for remaining transactions");
                 if (!txBatch.isEmpty()) {
                     if (this.getUpdateAndDeleteCount(txBatch) > 0) {
+                        log.debug("#### Indexing {} remaining transactions from the batch", txBatch.size());
                         docCount += indexBatchOfTransactions(txBatch);
                         totalUpdatedDocs += docCount;
                     }
@@ -777,6 +781,7 @@ public class MetadataTracker extends AbstractTracker implements Tracker
                 }
 
                 if (txsIndexed.size() > 0) {
+                    log.debug("## {} Transactions have been indexed, proceeding overwriting after Async", txsIndexed.size());
                     indexTransactionsAfterAsynchronous(txsIndexed, state);
                     long endElapsed = System.nanoTime();
                     trackerStats.addElapsedNodeTime(docCount, endElapsed - startElapsed);
