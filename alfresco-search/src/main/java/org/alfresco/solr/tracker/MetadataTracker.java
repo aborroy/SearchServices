@@ -999,16 +999,19 @@ public class MetadataTracker extends AbstractTracker implements Tracker
         }
         catch (IOException e)
         {
+            log.error("Checking node: {}",dbid,e);
             nodeReport.setDbNodeStatus(SolrApiNodeStatus.UNKNOWN);
             nodeReport.setDbTx(-2l);
         }
         catch (JSONException e)
         {
+            log.error("Checking node: {}",dbid,e);
             nodeReport.setDbNodeStatus(SolrApiNodeStatus.UNKNOWN);
             nodeReport.setDbTx(-3l);
         }
         catch (AuthenticationException e1)
         {
+            log.error("Checking node: {}",dbid,e1);
             nodeReport.setDbNodeStatus(SolrApiNodeStatus.UNKNOWN);
             nodeReport.setDbTx(-4l);
         }
