@@ -1849,7 +1849,7 @@ public class SolrInformationServer implements InformationServer
     @Override
     public void indexNode(Node node, boolean overwrite) throws IOException, AuthenticationException, JSONException
     {
-        log.debug("## Start indexing a node ###");
+        log.debug("## Start indexing a node:{}, in transaction:{}", node.getId(), node.getTxnId());
         SolrQueryRequest request = null;
         UpdateRequestProcessor processor = null;
         try
@@ -1882,6 +1882,8 @@ public class SolrInformationServer implements InformationServer
                     nodeMetaData = nodeMetaDatas.get(0);
                     if (!(nodeMetaData.getTxnId() > node.getTxnId()))
                     {
+                        log.debug(".. Removing from the content store node:{}, in transaction:{}", node.getId(),
+                            node.getTxnId());
                         if (node.getStatus() == SolrApiNodeStatus.DELETED)
                         {
                         	 try
@@ -1904,15 +1906,15 @@ public class SolrInformationServer implements InformationServer
                     // else, the node has moved on to a later transaction, and it will be indexed later
                 }
 
-                log.debug(".. deleting node " + node.getId());
+                log.debug(".. deleting node:{}, in Transaction:{}", node.getId(), node.getTxnId());
                 deleteNode(processor, request, node);
             }
 
 
             if ((node.getStatus() == SolrApiNodeStatus.UPDATED) || (node.getStatus() == SolrApiNodeStatus.UNKNOWN) || (node.getStatus() == SolrApiNodeStatus.NON_SHARD_UPDATED))
             {
-            	log.info(".. updating");
             	long nodeId = node.getId();
+                log.info(".. updating node:{}, in Transaction:{}", nodeId, node.getTxnId());
             	try
             	{
             		if(!spinLock(nodeId, 120000))
@@ -1944,24 +1946,25 @@ public class SolrInformationServer implements InformationServer
             			// else, the node has moved on to a later transaction, and it will be indexed later
 
             			if(node.getTxnId() == Long.MAX_VALUE) {
+                            log.debug(".. clean content cache");
             				//This is a re-index. We need to clear the txnId from the pr
             				this.cleanContentCache.remove(nodeMetaData.getTxnId());
             			}
 
 
             			if ((node.getStatus() == SolrApiNodeStatus.UPDATED) || (node.getStatus() == SolrApiNodeStatus.UNKNOWN)) {
-            				// check index control
+                            log.debug(".. check index control");
             				Map<QName, PropertyValue> properties = nodeMetaData.getProperties();
             				StringPropertyValue pValue = (StringPropertyValue) properties.get(ContentModel.PROP_IS_INDEXED);
             				if (pValue != null) {
             					Boolean isIndexed = Boolean.valueOf(pValue.getValue());
             					if (!isIndexed.booleanValue()) {
-            						if (log.isDebugEnabled()) {
-            							log.debug(".. clearing unindexed");
-            						}
+                                    log.debug(".. clearing unindexed");
             						deleteNode(processor, request, node);
 
             						SolrInputDocument doc = createNewDoc(nodeMetaData, DOC_TYPE_UNINDEXED_NODE);
+                                    log.debug(".. adding document: {} to Solr in Transaction:{}", nodeMetaData.getId(),
+                                        nodeMetaData.getTxnId());
             						solrContentStore.storeDocOnSolrContentStore(nodeMetaData, doc);
             						addDocCmd.solrDoc = doc;
             						processor.processAdd(addDocCmd);
@@ -1973,14 +1976,15 @@ public class SolrInformationServer implements InformationServer
             				}
 
             				// Make sure any unindexed or error doc is removed.
-            				if (log.isDebugEnabled())
-            				{
-            					log.debug("... deleting node " + node.getId());
-            				}
+
+                            log.debug("... deleting node {} for unindexed or errors in Transaction:{}", nodeId,
+                                node.getTxnId());
+
             				deleteNode(processor, request, node);
 
             				SolrInputDocument doc = createNewDoc(nodeMetaData, DOC_TYPE_NODE);
-            				addToNewDocAndCache(nodeMetaData, doc);
+                            log.debug(".. adding document: {} to Solr in Transaction:{}", nodeMetaData.getId(), nodeMetaData.getTxnId());
+                            addToNewDocAndCache(nodeMetaData, doc);
             				addDocCmd.solrDoc = doc;
             				processor.processAdd(addDocCmd);
             			}
@@ -2009,10 +2013,7 @@ public class SolrInformationServer implements InformationServer
 
             // TODO: retry failed
 
-            if(log.isDebugEnabled())
-            {
-                log.debug(".. deleting on exception");
-            }
+            log.debug(".. deleting on exception");
             deleteNode(processor, request, node);
 
             AddUpdateCommand addDocCmd = new AddUpdateCommand(request);
@@ -2427,10 +2428,7 @@ public class SolrInformationServer implements InformationServer
         boolean nodeHasSamePathAsBefore = cloud.exists(nativeRequestHandler, request, query);
         if (nodeHasSamePathAsBefore)
         {
-            if(log.isDebugEnabled())
-            {
-                log.debug("... found match");
-            }
+            log.debug("... found match");
         }
         else
         {
@@ -2438,19 +2436,13 @@ public class SolrInformationServer implements InformationServer
             boolean nodeHasBeenIndexed = cloud.exists(nativeRequestHandler, request, query);
             if (nodeHasBeenIndexed)
             {
-                if(log.isDebugEnabled())
-                {
-                    log.debug("... cascade updating docs");
-                }
+                log.debug("... cascade updating docs");
                 LinkedHashSet<Long> visited = new LinkedHashSet<Long>();
                 updateDescendantDocs(nodeMetaData, overwrite, request, processor, visited);
             }
             else
             {
-                if(log.isDebugEnabled())
-                {
-                    log.debug("... no doc to update");
-                }
+                log.debug("... no doc to update");
             }
         }
     }
@@ -2499,6 +2491,10 @@ public class SolrInformationServer implements InformationServer
             List<Long> unknownNodeIds = mapNullToEmptyList(nodeStatusToNodeIds.get(SolrApiNodeStatus.UNKNOWN));
             List<Long> updatedNodeIds = mapNullToEmptyList(nodeStatusToNodeIds.get(SolrApiNodeStatus.UPDATED));
 
+            log.debug(
+                "### deletedNodeIds size:{}, shardDeletedNodeIds size:{}, shardUpdatedNodeIds size:{}, unknownNodeIds size:{}, updatedNodeIds size:{}",
+                deletedNodeIds.size(), shardDeletedNodeIds.size(), shardUpdatedNodeIds.size(), unknownNodeIds.size(),
+                updatedNodeIds.size());
             if (!deletedNodeIds.isEmpty() || !shardDeletedNodeIds.isEmpty() || !shardUpdatedNodeIds.isEmpty() || !unknownNodeIds.isEmpty())
             {
                 // fix up any secondary paths
@@ -2526,6 +2522,8 @@ public class SolrInformationServer implements InformationServer
                     {
                         // the node has moved on to a later transaction
                         // it will be indexed later
+                        log.debug("node:{} has moved on to a later transaction: {} -> {}", node.getId(),
+                            node.getTxnId(), nodeMetaData.getTxnId());
                         continue;
                     }
                     if (nodeMetaData != null)
@@ -2547,10 +2545,8 @@ public class SolrInformationServer implements InformationServer
                     }
                 }
 
-                if(log.isDebugEnabled())
-                {
-                    log.debug(".... deleting");
-                }
+                log.debug(".... deleting");
+                
                 DeleteUpdateCommand delDocCmd = new DeleteUpdateCommand(request);
                 String query = this.cloud.getQuery(FIELD_DBID, OR, deletedNodeIds, shardDeletedNodeIds, shardUpdatedNodeIds, unknownNodeIds);
                 delDocCmd.setQuery(query);
@@ -2567,7 +2563,7 @@ public class SolrInformationServer implements InformationServer
                 nodeIds.addAll(shardUpdatedNodeIds);
                 nmdp.setNodeIds(nodeIds);
 
-                // Fetches bulk metadata
+                log.debug(".. fetches bulk metadata for nodeIds size:{}", nodeIds.size());
                 List<NodeMetaData> nodeMetaDatas =  repositoryClient.getNodesMetaData(nmdp, Integer.MAX_VALUE);
 
                 NEXT_NODE: for (NodeMetaData nodeMetaData : nodeMetaDatas)
@@ -2588,14 +2584,16 @@ public class SolrInformationServer implements InformationServer
 
                         if (nodeMetaData.getTxnId() > node.getTxnId())
                         {
-                            // the node has moved on to a later transaction
-                            // it will be indexed later
+                            log.debug("node:{} has moved on to a later transaction: {} -> {}", node.getId(),
+                                node.getTxnId(), nodeMetaData.getTxnId());
                             continue;
                         }
 
                         if(nodeIdsToNodes.get(nodeMetaData.getId()).getStatus() == SolrApiNodeStatus.NON_SHARD_UPDATED)
                         {
                             if(nodeMetaData.getProperties().get(ContentModel.PROP_CASCADE_TX) != null) {
+                                log.debug("node:{} index non shard cascade in transaction:{}", node.getId(),
+                                    node.getTxnId());
                                 indexNonShardCascade(nodeMetaData);
                             }
 
@@ -2613,10 +2611,7 @@ public class SolrInformationServer implements InformationServer
                             Boolean isIndexed = Boolean.valueOf(pValue.getValue());
                             if (!isIndexed.booleanValue())
                             {
-                                if(log.isDebugEnabled())
-                                {
-                                    log.debug(".. clearing unindexed");
-                                }
+                                log.debug(".. clearing unindexed");
                                 deleteNode(processor, request, node);
 
                                 SolrInputDocument doc = createNewDoc(nodeMetaData, DOC_TYPE_UNINDEXED_NODE);
@@ -2642,7 +2637,9 @@ public class SolrInformationServer implements InformationServer
                         SolrInputDocument doc = createNewDoc(nodeMetaData, DOC_TYPE_NODE);
                         addToNewDocAndCache(nodeMetaData, doc);
                         addDocCmd.solrDoc = doc;
-                        //System.out.println("###################### indexing doc:"+doc.toString());
+
+                        log.debug("indexing a node:{}, in transaction:{}", nodeMetaData.getId(),
+                            nodeMetaData.getTxnId());
                         processor.processAdd(addDocCmd);
 
                         long end = System.nanoTime();
