@@ -2545,7 +2545,7 @@ public class SolrInformationServer implements InformationServer
                     }
                 }
 
-                log.debug(".... deleting");
+                log.debug("...... deleting");
                 
                 DeleteUpdateCommand delDocCmd = new DeleteUpdateCommand(request);
                 String query = this.cloud.getQuery(FIELD_DBID, OR, deletedNodeIds, shardDeletedNodeIds, shardUpdatedNodeIds, unknownNodeIds);
@@ -2617,6 +2617,7 @@ public class SolrInformationServer implements InformationServer
                                 SolrInputDocument doc = createNewDoc(nodeMetaData, DOC_TYPE_UNINDEXED_NODE);
                                 addDocCmd.solrDoc = doc;
                                 if (recordUnindexedNodes) {
+                                    log.debug("Recording unindexed node: {}",nodeMetaData.getId());
                                     solrContentStore.storeDocOnSolrContentStore(nodeMetaData, doc);
                                     processor.processAdd(addDocCmd);
                                 }
@@ -2630,7 +2631,7 @@ public class SolrInformationServer implements InformationServer
                         // Make sure any unindexed or error doc is removed.
                         if (log.isDebugEnabled())
                         {
-                            log.debug(".... deleting node " + node.getId());
+                            log.debug(".... deleting unindexed or error node " + node.getId());
                         }
                         deleteNode(processor, request, node);
 
@@ -2644,6 +2645,9 @@ public class SolrInformationServer implements InformationServer
 
                         long end = System.nanoTime();
                         this.trackerStats.addNodeTime(end - start);
+                        log.debug("## Node id: {} added in: {}", 
+                                  nodeMetaData.getId(),
+                                  (end - start));
                     }
                     finally
                     {
@@ -2652,7 +2656,7 @@ public class SolrInformationServer implements InformationServer
                     }
                 } // Ends iteration over nodeMetadatas
             } // Ends checking for the existence of updated or unknown node ids
-
+            log.debug("### END indexNodes ###");
         }
         catch (Exception e)
         {
