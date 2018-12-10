@@ -7,6 +7,7 @@ ENV DIST_DIR /opt/alfresco-search-services
 ENV SOLR_ZIP ${project.build.finalName}.zip
 ENV LANG C.UTF-8
 ENV OPENSSL_VERSION 1.0.2k-8.el7
+ENV PORT="8983"
 
 COPY "$SOLR_ZIP" .
 
@@ -31,6 +32,6 @@ WORKDIR $DIST_DIR
 VOLUME $DIST_DIR/data
 VOLUME $DIST_DIR/solrhome
 
-EXPOSE 8983
+EXPOSE $PORT
 USER solr
 CMD $DIST_DIR/solr/bin/search_config_setup.sh "$DIST_DIR/solr/bin/solr start -f"
