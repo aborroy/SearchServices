@@ -324,6 +324,7 @@ public class MetadataTracker extends AbstractTracker implements Tracker
     
     private void indexTransactions() throws IOException, AuthenticationException, JSONException
     {
+        log.debug("### start indexTransactions ###");
         long startElapsed = System.nanoTime();
         
         int docCount = 0;
@@ -705,6 +706,7 @@ public class MetadataTracker extends AbstractTracker implements Tracker
 
                 ArrayList<Transaction> txBatch = new ArrayList<>();
                 for (Transaction info : transactions.getTransactions()) {
+                    log.debug("--- Process tx id:{} timestamp:{}", info.getId(), info.getCommitTimeMs());
 
                     /*
                     *  isInIndex is used to ensure transactions that are being re-pulled due to "hole retention" are not re-indexed if
@@ -729,10 +731,13 @@ public class MetadataTracker extends AbstractTracker implements Tracker
                         // correctly next time
                         if (info.getCommitTimeMs() > state.getTimeToStopIndexing()) {
                             upToDate = true;
-                            log.debug("## Stop scanning transactions, commit time: {} is greater than the stop indexing time {}", info.getCommitTimeMs(), state.getTimeToStopIndexing());
+                            log.debug("## Stop scanning transactions, txid: {}  commit time: {} is greater than the stop indexing time {}",
+                                    info.getId(),
+                                    info.getCommitTimeMs(),
+                                    state.getTimeToStopIndexing());
                             break;
                         }
-
+                        log.debug("## Adding tx ID:{} to txBatch",info.getId());
                         txBatch.add(info);
                         long updateAndDeleteCount = getUpdateAndDeleteCount(txBatch);
                         if (updateAndDeleteCount > this.transactionDocsBatchSize) {
@@ -870,18 +875,12 @@ public class MetadataTracker extends AbstractTracker implements Tracker
         gnp.setStoreIdentifier(storeRef.getIdentifier());
         gnp.setShardProperty(shardProperty);
         log.debug("## Get nodes from txids: " + gnp.getTransactionIds());
-        log.debug("## Starting from Node: " + gnp.getFromNodeId());
-        log.debug("## Up to Node: " + gnp.getToNodeId());
         List<Node> nodes = client.getNodes(gnp, Integer.MAX_VALUE);
         
         ArrayList<Node> nodeBatch = new ArrayList<>();
         for (Node node : nodes)
         {
-            log.debug(String.format("#### Adding node id: %d txid: %d", node.getId(),node.getTxnId()));
-            if (log.isDebugEnabled())
-            {
-                log.debug(node.toString());
-            }
+            log.debug(String.format("#### Adding to BatchTX node id: %d txid: %d", node.getId(),node.getTxnId()));
             nodeBatch.add(node);
             if (nodeBatch.size() > nodeBatchSize)
             {

@@ -2662,9 +2662,11 @@ public class SolrInformationServer implements InformationServer
         {
             
             log.error("SolrInformationServer problem", e);
+            log.debug("## Reindex due to SolrInformationServer problem nodes: {}", nodes.size());
             // Bulk version failed, so do one at a time.
             for (Node node : nodes)
             {
+                log.debug("## Reindexing due to SolrInformationServer problem node:{}",node.getId());
                 this.indexNode(node, true);
             }
         }

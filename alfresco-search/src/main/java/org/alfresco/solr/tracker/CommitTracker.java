@@ -148,6 +148,7 @@ public class CommitTracker extends AbstractTracker
             }
 
             if(hasMaintenance) {
+                log.debug("####### DOING maintenance #########");
                 maintenance();
             }
 
