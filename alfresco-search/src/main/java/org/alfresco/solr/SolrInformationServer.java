@@ -2613,7 +2613,7 @@ public class SolrInformationServer implements InformationServer
                             {
                                 log.debug(".. clearing unindexed");
                                 deleteNode(processor, request, node);
-
+                                log.debug("... deleteNode: {} txid: {}", node.getId(), node.getTxnId());
                                 SolrInputDocument doc = createNewDoc(nodeMetaData, DOC_TYPE_UNINDEXED_NODE);
                                 addDocCmd.solrDoc = doc;
                                 if (recordUnindexedNodes) {

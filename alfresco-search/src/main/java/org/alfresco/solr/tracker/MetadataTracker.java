@@ -749,7 +749,10 @@ public class MetadataTracker extends AbstractTracker implements Tracker
                                 txnsFound.add(scheduledTx);
                                 txsIndexed.add(scheduledTx);
                             }
+                            log.debug("Start clearing the txBatch");
+                            txBatch.forEach(action -> log.debug("Removing txid:" + action.getId())); 
                             txBatch.clear();
+                            log.debug("End clearing the txBatch");
                         }
                     }
 
@@ -863,9 +866,11 @@ public class MetadataTracker extends AbstractTracker implements Tracker
         ArrayList<Long> txIds = new ArrayList<Long>();
         for (Transaction tx : txBatch)
         {
+            log.debug("Process txid:: " + tx.getId());
             if (tx.getUpdates() > 0 || tx.getDeletes() > 0)
             {
                 nonEmptyTxs.add(tx);
+                log.debug("Adding txid to txIds to process: " + tx.getId());
                 txIds.add(tx.getId());
             }
         }
@@ -934,9 +939,10 @@ public class MetadataTracker extends AbstractTracker implements Tracker
             ArrayList<Node> filteredList = new ArrayList<Node>(nodes.size());
             for(Node node : nodes)
             {
-
+                log.debug("Filtering node:{} tx:{}", node.getId(), node.getTxnId());
                 if(docRouter.routeNode(shardCount, shardInstance, node))
                 {
+                    log.debug("add to filteredList: " + node.getId());
                     filteredList.add(node);
                 }
                 else
@@ -952,6 +958,7 @@ public class MetadataTracker extends AbstractTracker implements Tracker
                         doCascade.setTenant(node.getTenant());
                         doCascade.setTxnId(node.getTxnId());
                         filteredList.add(doCascade);
+                        log.debug("add doCascade to filteredList: " + node.getId());
                     }
                     else // DELETED & UNKNOWN
                     {
@@ -964,6 +971,7 @@ public class MetadataTracker extends AbstractTracker implements Tracker
                         doDelete.setTenant(node.getTenant());
                         doDelete.setTxnId(node.getTxnId());
                         filteredList.add(doDelete);
+                        log.debug("add doDelete to filteredList: " + node.getId());
                     }
                 }
             }
