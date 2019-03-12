@@ -360,6 +360,7 @@ public class MetadataTracker extends AbstractTracker implements Tracker
                     }
 
                     // Index the transaction doc after the node - if this is not found then a reindex will be done.
+                    log.debug("## Index single tx: " + info.getId());
                     this.infoSrv.indexTransaction(info, false);
                     requiresCommit = true;
 
@@ -775,16 +776,19 @@ public class MetadataTracker extends AbstractTracker implements Tracker
                 // Index any remaining transactions bringing the index to a consistent state so the CommitTracker can commit if need be.
                 log.debug("## Scanning for remaining transactions");
                 if (!txBatch.isEmpty()) {
+                    log.debug("## txBatch is not empty size: {} ", txBatch.size());
                     if (this.getUpdateAndDeleteCount(txBatch) > 0) {
                         log.debug("#### Indexing {} remaining transactions from the batch", txBatch.size());
                         docCount += indexBatchOfTransactions(txBatch);
                         totalUpdatedDocs += docCount;
                     }
-
+                    log.debug("## iterating over txBatch");
                     for (Transaction scheduledTx : txBatch) {
+                        log.debug("##! adding txid:{} to txnsFound and txsIndexed", scheduledTx.getId());
                         txnsFound.add(scheduledTx);
                         txsIndexed.add(scheduledTx);
                     }
+                    log.debug("## clearing txBatch");
                     txBatch.clear();
                 }
 
@@ -853,8 +857,11 @@ public class MetadataTracker extends AbstractTracker implements Tracker
         long count = 0;
         for (Transaction tx : txs)
         {
+            log.debug("## tx.getUpdates():{} + tx.getDeletes(): {}",
+                    tx.getUpdates() + tx.getDeletes());
             count += (tx.getUpdates() + tx.getDeletes());
         }
+        log.debug("## update/delete count: {}",count );
         return count;
     }
 
