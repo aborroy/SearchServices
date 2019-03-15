@@ -50,6 +50,7 @@ import org.alfresco.solr.client.SOLRAPIClient;
 import org.alfresco.solr.client.Transaction;
 import org.alfresco.solr.client.Transactions;
 import org.apache.commons.codec.EncoderException;
+import org.apache.zookeeper.server.persistence.TxnLog.TxnIterator;
 import org.json.JSONException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -787,6 +788,7 @@ public class MetadataTracker extends AbstractTracker implements Tracker
                         log.debug("##! adding txid:{} to txnsFound and txsIndexed", scheduledTx.getId());
                         txnsFound.add(scheduledTx);
                         txsIndexed.add(scheduledTx);
+                        log.debug("txnsFound size: {} txnIndexed: {}", txnsFound.size(), txsIndexed.size());
                     }
                     log.debug("## clearing txBatch");
                     txBatch.clear();
@@ -857,8 +859,6 @@ public class MetadataTracker extends AbstractTracker implements Tracker
         long count = 0;
         for (Transaction tx : txs)
         {
-            log.debug("## tx.getUpdates():{} + tx.getDeletes(): {}",
-                    tx.getUpdates() + tx.getDeletes());
             count += (tx.getUpdates() + tx.getDeletes());
         }
         log.debug("## update/delete count: {}",count );
